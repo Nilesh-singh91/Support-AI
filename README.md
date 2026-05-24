@@ -7,7 +7,7 @@ An AI-powered customer support chatbot built for modern websites. It helps users
 ## 🌐 Live Demo
 
 Run locally on:  
-👉 http://support-ai-chatbot-gules.vercel.app
+👉 https://support-ai-chatbot-gules.vercel.app
 
 ---
 
