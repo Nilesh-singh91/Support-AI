@@ -3,86 +3,135 @@ import Settings from "@/model/settings.model";
 import { GoogleGenAI } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
+}
+
 export async function POST(req: NextRequest) {
-    try {
-        const { message, ownerId } = await req.json()
-        if (!message || !ownerId) {
-            return NextResponse.json(
-                { message: "message and owner id is required" },
-                { status: 400 }
-            )
+  try {
+    const { message, ownerId } = await req.json();
+
+    if (!message || !ownerId) {
+      return NextResponse.json(
+        {
+          message: "Message and owner ID are required.",
+        },
+        {
+          status: 400,
+          headers: corsHeaders,
         }
-    await connectDb()
-        const setting = await Settings.findOne({ ownerId })
-        if (!setting) {
-            return NextResponse.json(
-                { message: "chat bot is not configured yet." },
-                { status: 400 }
-            )
+      );
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return NextResponse.json(
+        {
+          message: "Gemini API key is missing.",
+        },
+        {
+          status: 500,
+          headers: corsHeaders,
         }
+      );
+    }
 
-        const KNOWLEDGE=`
-        business name- ${setting.businessName || "not provided"}
-        supportEmail- ${setting.supportEmail || "not provided"}
-        knowledge- ${setting.knowledge ||" not provided"}
-        `
-     
+    await connectDb();
 
-       const prompt = `
-You are a professional customer support assistant for this business.
+    const settings = await Settings.findOne({ ownerId });
 
-Use ONLY the information provided below to answer the customer's question.
-You may rephrase, summarize, or interpret the information if needed.
-Do NOT invent new policies, prices, or promises.
+    if (!settings) {
+      return NextResponse.json(
+        {
+          message: "Chatbot is not configured yet.",
+        },
+        {
+          status: 404,
+          headers: corsHeaders,
+        }
+      );
+    }
 
+    const knowledge = `
+Business Name: ${settings.businessName || "Not provided"}
+Support Email: ${settings.supportEmail || "Not provided"}
 
-
---------------------
-BUSINESS INFORMATION
---------------------
-${KNOWLEDGE}
-
---------------------
-CUSTOMER QUESTION
---------------------
-${message}
-
---------------------
-ANSWER
---------------------
+Knowledge Base:
+${settings.knowledge || "No knowledge provided"}
 `;
 
-const ai = new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY});
- const res = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt,
-  });
+    const prompt = `
+You are a professional customer-support assistant.
 
-const response= NextResponse.json(res.text)
- response.headers.set("Access-Control-Allow-Origin", "*");
-    response.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.headers.set("Access-Control-Allow-Headers", "Content-Type");
-return response
+Answer the customer's question using only the business information
+provided below.
 
-    } catch (error) {
- const response= NextResponse.json(
-                { message:`chat error ${error}` },
-                { status: 500 }
-            )
-  response.headers.set("Access-Control-Allow-Origin", "*");
-    response.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.headers.set("Access-Control-Allow-Headers", "Content-Type");
-    return response
+Rules:
+- Do not invent policies, prices, delivery times, or promises.
+- Keep the answer short, clear, and helpful.
+- If the answer is unavailable, ask the customer to contact the support email.
+
+BUSINESS INFORMATION:
+${knowledge}
+
+CUSTOMER QUESTION:
+${message}
+`;
+
+    const ai = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+    });
+
+    const result = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+    });
+
+    const answer = result.text?.trim();
+
+    if (!answer) {
+      return NextResponse.json(
+        {
+          message: "No response was generated.",
+        },
+        {
+          status: 500,
+          headers: corsHeaders,
+        }
+      );
     }
-}
 
-export const OPTIONS=async ()=>{
-   return NextResponse.json(null,{
-status:201,
-headers:{
-     "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-}
-   })
+    return NextResponse.json(
+      {
+        message: answer,
+      },
+      {
+        status: 200,
+        headers: corsHeaders,
+      }
+    );
+  } catch (error) {
+    console.error("Chat API error:", error);
+
+    return NextResponse.json(
+      {
+        message:
+          error instanceof Error
+            ? error.message
+            : "Something went wrong while generating the answer.",
+      },
+      {
+        status: 500,
+        headers: corsHeaders,
+      }
+    );
+  }
 }
