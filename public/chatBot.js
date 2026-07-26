@@ -1,9 +1,8 @@
 (function () {
-  const apiUrl = "http://localhost:3000/api/chat";
+  const apiUrl = "https://support-ai-alpha-sable.vercel.app/api/chat";
 
   const scriptTag = document.currentScript;
   const ownerId = scriptTag?.getAttribute("data-owner-id");
-
   if (!ownerId) {
     console.error("Owner ID not found");
     return;
